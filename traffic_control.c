@@ -13,18 +13,18 @@
  * Created: 10/22/2020 4:06:43 PM
  * Author : Cole
  */ 
-#define F_CPU									16000000	//speed of ATmega328p is 16MHz
+#define F_CPU									16000000			//speed of ATmega328p is 16MHz
 
 #include <avr/io.h>
-#include <avr/interrupt.h>									//needed to make interrupts work
-#include <util/delay.h>										//needed for debouncing
+#include <avr/interrupt.h>											//needed to make interrupts work
+#include <util/delay.h>												//needed for debouncing
 
 #define	TURN_ON(n)								PORTB |= 1<<n
 #define TURN_OFF(n)								PORTB &= ~(1<<n)
-#define  TOGGLE(n)								PORTB ^= 1<<n
 
-#define F_COUNT 1000;										//frequency of count (period is 1ms)
-#define V_OCR0									F_CPU/64/F_COUNT; //OCR0 value
+#define F_COUNT									1000				//frequency of count (period is 1ms)
+#define V_OCR0									F_CPU/64/F_COUNT	//OCR0 value
+#define COUNT(x)								F_COUNT*x			//convert seconds to counts
 
 volatile unsigned int count; //our counting variable, every count is 1 ms
 unsigned char buttonpushed; //this is a global variable because it's the state of our button and is set and cleared by more than one function
@@ -37,9 +37,12 @@ PEDESTRIAN										= PORTB3
 }; //traffic light signal
 
 
-#define RED_ON									count < 4000
-#define GREEN_ON								(count >= 4000 && count < 6000)
+#define RED_ON									count < COUNT(4)
+#define GREEN_ON								(count >= COUNT(4) && count < COUNT(6))
 #define YELLOW_ON								!(RED_ON || GREEN_ON)
+
+#define PEDESTRIAN_ON							(count >= COUNT(6.5) && count < COUNT(7)) ||\
+												(count >= COUNT(7.5) && count < COUNT(8))
 
 void button_press()
 {
@@ -70,26 +73,13 @@ void pedestrian_light()
 			}
 			else if(YELLOW_ON)
 			{
-				if(count < 6500) //blink off 1st time during yellow
+				if(PEDESTRIAN_ON) //blink off 2st and 4rd time during yellow
 				{
-					TURN_OFF(PEDESTRIAN);
-				}
-				else if(count < 7000) //blink on 1st time during yellow
-				{
-					//turn on pedestrian light
 					TURN_ON(PEDESTRIAN);
 				}
-				else if(count < 7500) //blink off 2nd time during yellow
+				else //blink on 1st and 3rd time during yellow
 				{
-					//turn off pedestrian light
 					TURN_OFF(PEDESTRIAN);
-				}
-				else if(count < 8000) //blink on 2nd time during yellow, then reset button status
-				{
-					//turn on pedestrian light
-					TURN_ON(PEDESTRIAN);
-					//reset button status
-					buttonpushed = 0;
 				}
 			}
 		}	
@@ -100,8 +90,9 @@ ISR(TIMER0_COMPA_vect)
 {
 	TCNT0 = 0;
 	//this ISR counts in milliseconds, counts to 8 seconds and then resets to 0 and starts again
-	if (count >= 8/1e-3) {
+	if (count >= COUNT(8)) {
 		count = 0;
+		buttonpushed = 0;
 		return;
 	}
 	count++;
